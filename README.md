@@ -28,11 +28,19 @@ These columns are optional:
 - `% Attended` (optional; displayed attendance is calculated from Total ÷ Possible)
 - `Year` and `Email` (optional; otherwise matched from the bundled roster)
 
-Each import is saved as a separate report. Students whose roster lists only COM668 are excluded from report views, summaries, notifications, and exports. Use **Export Low-Attendance CSV** to export the remaining students below the selected threshold. The export includes the report date range. If no students meet both criteria, the app displays a message instead of creating an empty file. Imported reports are stored under `~/Library/Application Support/AttendanceTracker/`.
+For screenshots and demonstrations, import [Examples/DemoAttendance.csv](Examples/DemoAttendance.csv). It contains fictional students with `DEMO` IDs and no email addresses.
+
+Each import is saved as a separate report. Students whose roster lists only COM668 are excluded from report views, summaries, and exports. Use **Export Low-Attendance CSV** to export the remaining students below the selected threshold. The export includes the report date range. If no students meet both criteria, the app displays a message instead of creating an empty file. Imported reports are stored under `~/Library/Application Support/AttendanceTracker/`.
 
 Place `StudentRoster.csv` at `~/Library/Application Support/AttendanceTracker/StudentRoster.csv`. The app reads it automatically at launch; it is not bundled with the app or needed in the GitHub repository. The roster supplies Year and Email, matched by `Student ID` and `Student No`, and its Modules column is used to exclude students taking only COM668. Keep this file local because it contains personal data.
 
-The sidebar lets you set the low-attendance threshold and optionally turn on a repeating Monday 9:00 AM summary notification. Low-attendance notifications are sent after import when any student is below the selected threshold. macOS may ask for notification permission.
+The sidebar slider sets the low-attendance threshold used by the report summary and CSV export. Attendance Tracker sends no notifications; importing reports and creating email drafts remain manual actions.
+
+Use **Email Attendance** to select a date range and one or more students with valid email addresses. Only complete report periods within the selected range are included; each report's attendance values are shown separately. The greeting uses the final word of the student's name as their forename. Drafts use Aptos 12 pt when installed; otherwise, the app uses the system font at 12 pt. The date-range workflow warns when Aptos is unavailable; double-clicking a name does not. Submitting opens an individual prefilled draft in the configured macOS email app for each student, so you can review and send each message without exposing other students' addresses or data.
+
+Double-click a student's name to open a prefilled attendance email for the currently selected report.
+
+Click any student table column heading to sort by that field; click it again to reverse the sort order.
 
 ## Test
 

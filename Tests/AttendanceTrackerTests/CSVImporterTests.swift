@@ -14,7 +14,20 @@ struct CSVImporterTests {
         try rejectsDuplicateStudentNumbers()
         try rejectsAttendanceGreaterThanPossible()
         try exportsAReportThatCanBeImportedAgain()
-        print("All 11 CSV importer tests passed.")
+        try parsesDemoAttendanceDataset()
+        print("All 12 CSV importer tests passed.")
+    }
+
+    private static func parsesDemoAttendanceDataset() throws {
+        let data = try Data(contentsOf: URL(fileURLWithPath: "Examples/DemoAttendance.csv"))
+        let report = try CSVImporter.parseReport(data: data)
+        try expect(report.students.count == 20, "Expected the demo dataset to contain 20 students.")
+        try expect(report.students.allSatisfy { $0.studentNumber.hasPrefix("DEMO") }, "Expected demo student IDs.")
+        try expect(report.students.allSatisfy { $0.email == nil }, "Expected the demo dataset to contain no email addresses.")
+        try expect(
+            report.students.filter { $0.attendancePercentage < 0.8 }.count == 8,
+            "Expected the demo dataset to include a range of low-attendance students."
+        )
     }
 
     private static func parsesAcademicReportMetadataAndTabSeparatedRows() throws {
