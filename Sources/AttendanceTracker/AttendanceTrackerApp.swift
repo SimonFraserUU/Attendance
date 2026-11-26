@@ -20,6 +20,11 @@ struct AttendanceTrackerApp {
     @MainActor
     static func main() {
         let application = NSApplication.shared
+        guard let iconURL = Bundle.main.url(forResource: "AttendanceTracker", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else {
+            fatalError("Could not load the Attendance Tracker app icon.")
+        }
+        application.applicationIconImage = icon
         let delegate = AppDelegate()
         application.setActivationPolicy(.regular)
         application.delegate = delegate
@@ -574,10 +579,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     @objc private func openAttendanceEmailForStudent(_ sender: NSTableView) {
-        guard sender.clickedColumn >= 0,
-              sender.tableColumns.indices.contains(sender.clickedColumn),
-              sender.tableColumns[sender.clickedColumn].identifier.rawValue == "name",
-              displayedStudents.indices.contains(sender.clickedRow),
+        guard displayedStudents.indices.contains(sender.clickedRow),
               let report = selectedReport else { return }
 
         let student = displayedStudents[sender.clickedRow]

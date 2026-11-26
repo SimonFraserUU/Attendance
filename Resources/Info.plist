@@ -8,6 +8,8 @@
     <string>edu.ulster.attendancetracker</string>
     <key>CFBundleName</key>
     <string>Attendance Tracker</string>
+    <key>CFBundleIconFile</key>
+    <string>AttendanceTracker.icns</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

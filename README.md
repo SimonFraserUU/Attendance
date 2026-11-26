@@ -38,7 +38,7 @@ The sidebar slider sets the low-attendance threshold used by the report summary 
 
 Use **Email Attendance** to select a date range and one or more students with valid email addresses. Only complete report periods within the selected range are included; each report's attendance values are shown separately. Edit the shared message template before submitting; the template is saved locally and used for future drafts. Available placeholders are `{{forename}}` and `{{name}}` (taken from the roster's `Surname, Forename` Name field and rendered in forename-surname order; report names are used if the roster name is unavailable), `{{start_date}}`, `{{end_date}}`, and `{{attendance_details}}` (the selected attendance reports). Drafts use Aptos 12 pt when installed; otherwise, the app silently uses the system font at 12 pt. Submitting opens an individual prefilled draft in the configured macOS email app for each student, so you can review and send each message without exposing other students' addresses or data.
 
-Double-click a student's name to open a prefilled attendance email for the currently selected report.
+Double-click anywhere on a student's row to open a prefilled attendance email for the currently selected report.
 
 Click any student table column heading to sort by that field; click it again to reverse the sort order.
 

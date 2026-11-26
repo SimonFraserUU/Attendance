@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#F5F1E8"/>
+  <text
+    x="512"
+    y="625"
+    text-anchor="middle"
+    font-family="Helvetica Neue, Arial, sans-serif"
+    font-size="420"
+    font-weight="700"
+    letter-spacing="-28"
+    fill="#111111">AT</text>
+  <rect x="392" y="730" width="240" height="18" rx="9" fill="#4B806E"/>
+</svg>

@@ -4,6 +4,7 @@ set -eu
 cd "$(dirname "$0")"
 app=".build/AttendanceTracker.app"
 mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/Resources"
 
 swiftc -O \
     -sdk "$(xcrun --show-sdk-path)" \
@@ -19,4 +20,5 @@ swiftc -O \
     -framework UserNotifications
 
 cp Resources/Info.plist "$app/Contents/Info.plist"
+cp Resources/AttendanceTracker.icns "$app/Contents/Resources/AttendanceTracker.icns"
 open "$app"
