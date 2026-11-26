@@ -15,7 +15,34 @@ struct CSVImporterTests {
         try rejectsAttendanceGreaterThanPossible()
         try exportsAReportThatCanBeImportedAgain()
         try parsesDemoAttendanceDataset()
-        print("All 12 CSV importer tests passed.")
+        try rendersAttendanceEmailTemplatePlaceholders()
+        try parsesRosterNameForEmailPersonalization()
+        print("All 14 tests passed.")
+    }
+
+    private static func rendersAttendanceEmailTemplatePlaceholders() throws {
+        let rendered = AttendanceEmailTemplate.render(
+            "Hello {{forename}} ({{name}}), {{start_date}} to {{end_date}}:\n{{attendance_details}}",
+            forename: "Alex",
+            fullName: "Alex Example",
+            startDate: "1 January 2026",
+            endDate: "31 January 2026",
+            attendanceDetails: "Attendance: 9 of 10"
+        )
+        try expect(
+            rendered == "Hello Alex (Alex Example), 1 January 2026 to 31 January 2026:\nAttendance: 9 of 10",
+            "Expected all supported email template placeholders to be replaced."
+        )
+    }
+
+    private static func parsesRosterNameForEmailPersonalization() throws {
+        let name = AttendanceEmailTemplate.name(fromRosterValue: "Smith, Mary Jane")
+        try expect(name?.forename == "Mary Jane", "Expected the full forename after the comma.")
+        try expect(name?.fullName == "Mary Jane Smith", "Expected the merge name in forename-surname order.")
+        try expect(
+            AttendanceEmailTemplate.name(fromRosterValue: "Incomplete") == nil,
+            "Expected names without a comma to use the report-name fallback."
+        )
     }
 
     private static func parsesDemoAttendanceDataset() throws {
@@ -68,13 +95,14 @@ struct CSVImporterTests {
     private static func parsesStudentRoster() throws {
         let csv = """
         Year,Student ID,Name,Programme,Email,Modules
-        Y1,10001,"Alex, Example",Computing,alex@example.com,COM668
-        Y2,10002,Sam Example,Computing,sam@example.com,"COM661, COM668"
+        Y1,10001,"Example, Alex",Computing,alex@example.com,COM668
+        Y2,10002,"Example, Sam",Computing,sam@example.com,"COM661, COM668"
         """
 
         let roster = try CSVImporter.parseRoster(data: Data(("\u{feff}" + csv).utf8))
         try expect(roster.count == 2, "Expected two roster entries.")
         try expect(roster["10001"]?.year == "Y1", "Expected student year to be parsed.")
+        try expect(roster["10001"]?.name == "Example, Alex", "Expected the roster name to be parsed.")
         try expect(roster["10001"]?.email == "alex@example.com", "Expected student email to be parsed.")
         try expect(roster["10001"]?.isOnlyTaking(module: "COM668") == true, "Expected a student taking only COM668 to be identified.")
         try expect(roster["10002"]?.isOnlyTaking(module: "COM668") == false, "Expected students taking other modules to remain eligible.")

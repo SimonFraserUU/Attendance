@@ -28,6 +28,7 @@ struct AttendanceStudent: Identifiable, Codable, Equatable {
 }
 
 struct StudentRosterEntry: Equatable {
+    let name: String?
     let year: String?
     let email: String?
     let modules: String?

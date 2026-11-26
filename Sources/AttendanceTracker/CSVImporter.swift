@@ -155,6 +155,7 @@ enum CSVImporter {
               let modulesIndex = columns["modules"] else {
             throw AttendanceImportError.missingColumns(["Year", "Student ID", "Email", "Modules"])
         }
+        let nameIndex = columns["name"]
         let dataRows = rows.dropFirst(headerIndex + 1).filter {
             $0.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         }
@@ -177,6 +178,7 @@ enum CSVImporter {
                 throw AttendanceImportError.invalidRow(rowNumber, "Student ID appears more than once.")
             }
             entries[studentNumber] = StudentRosterEntry(
+                name: nameIndex.flatMap { value(at: $0) },
                 year: value(at: yearIndex),
                 email: value(at: emailIndex),
                 modules: value(at: modulesIndex)

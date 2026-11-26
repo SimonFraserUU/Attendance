@@ -11,6 +11,7 @@ swiftc -O \
     -o "$app/Contents/MacOS/AttendanceTracker" \
     Sources/AttendanceTracker/AttendanceModels.swift \
     Sources/AttendanceTracker/CSVImporter.swift \
+    Sources/AttendanceTracker/AttendanceEmailTemplate.swift \
     Sources/AttendanceTracker/AttendanceStore.swift \
     Sources/AttendanceTracker/LocalNotifications.swift \
     Sources/AttendanceTracker/AttendanceTrackerApp.swift \

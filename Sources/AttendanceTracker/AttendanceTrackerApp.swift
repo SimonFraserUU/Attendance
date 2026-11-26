@@ -5,6 +5,7 @@ private struct StudentEmailCandidate {
     let studentNumber: String
     let name: String
     let email: String?
+    var rosterName: String? = nil
 
     var recipient: String? {
         guard let email else { return nil }
@@ -47,6 +48,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     private var emailStartPicker: NSDatePicker?
     private var emailEndPicker: NSDatePicker?
     private var emailStudentTable: NSTableView?
+    private var emailTemplateView: NSTextView?
     private var emailSelectionButton: NSButton?
     private var emailSubmitButton: NSButton?
     private var emailStudentCountLabel: NSTextField?
@@ -440,7 +442,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         selectedEmailStudentNumbers.removeAll()
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 610),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 800),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -502,6 +504,39 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         studentsScroll.borderType = .bezelBorder
         studentsScroll.documentView = studentsTable
 
+        let templateTitle = NSTextField(labelWithString: "MESSAGE TEMPLATE")
+        templateTitle.font = .systemFont(ofSize: 10, weight: .semibold)
+        templateTitle.textColor = .secondaryLabelColor
+        let resetTemplateButton = button(
+            "Restore default",
+            symbol: "arrow.counterclockwise",
+            action: #selector(resetEmailTemplate)
+        )
+        let templateHeading = NSStackView(views: [templateTitle, spacer(), resetTemplateButton])
+        templateHeading.orientation = .horizontal
+        templateHeading.alignment = .centerY
+
+        let templateHelp = secondaryLabel(
+            "Edit the shared message. Placeholders: {{forename}}, {{name}}, {{start_date}}, {{end_date}}, {{attendance_details}}."
+        )
+        templateHelp.font = .systemFont(ofSize: 11)
+        templateHelp.lineBreakMode = .byWordWrapping
+        templateHelp.maximumNumberOfLines = 2
+
+        let templateView = NSTextView(frame: NSRect(x: 0, y: 0, width: 700, height: 150))
+        templateView.string = savedEmailTemplate
+        templateView.font = .systemFont(ofSize: 12)
+        templateView.isRichText = false
+        templateView.isVerticallyResizable = true
+        templateView.isHorizontallyResizable = false
+        templateView.autoresizingMask = [.width]
+        templateView.textContainer?.widthTracksTextView = true
+        emailTemplateView = templateView
+        let templateScroll = NSScrollView()
+        templateScroll.hasVerticalScroller = true
+        templateScroll.borderType = .bezelBorder
+        templateScroll.documentView = templateView
+
         let cancelButton = button("Cancel", symbol: "xmark", action: #selector(closeEmailAttendance))
         let submitButton = button("Submit", symbol: "envelope", action: #selector(submitEmailAttendance))
         submitButton.keyEquivalent = "\r"
@@ -511,7 +546,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         actionRow.spacing = 8
 
         let content = NSStackView(views: [
-            title, description, dateRange, rangeHelp, countLabel, selectAllButton, studentsScroll, actionRow
+            title, description, dateRange, rangeHelp, countLabel, selectAllButton, studentsScroll,
+            templateHeading, templateHelp, templateScroll, actionRow
         ])
         content.orientation = .vertical
         content.alignment = .leading
@@ -526,7 +562,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             content.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
             content.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -18),
             studentsScroll.widthAnchor.constraint(equalTo: content.widthAnchor),
-            studentsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 300),
+            studentsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 190),
+            templateScroll.widthAnchor.constraint(equalTo: content.widthAnchor),
+            templateScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 150),
             actionRow.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
         panel.contentView = container
@@ -546,7 +584,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let candidate = StudentEmailCandidate(
             studentNumber: student.studentNumber,
             name: student.name,
-            email: student.email
+            email: student.email,
+            rosterName: studentRoster[student.studentNumber]?.name
         )
         guard let recipient = candidate.recipient else {
             showMessage(
@@ -560,7 +599,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             return
         }
 
-        let emailFont = attendanceEmailFont(warnWhenUnavailable: false)
+        let emailFont = attendanceEmailFont()
         service.recipients = [recipient]
         service.subject = "Attendance data: \(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted))"
         let body = attendanceEmailBody(
@@ -568,7 +607,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             reports: [(report, student)],
             start: report.periodStart,
             end: report.periodEnd,
-            font: emailFont
+            font: emailFont,
+            template: savedEmailTemplate
         )
         service.perform(withItems: [body])
     }
@@ -637,7 +677,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             }
         }
         emailCandidates = studentsByNumber.values
-            .map { StudentEmailCandidate(studentNumber: $0.studentNumber, name: $0.name, email: $0.email) }
+            .map {
+                StudentEmailCandidate(
+                    studentNumber: $0.studentNumber,
+                    name: $0.name,
+                    email: $0.email,
+                    rosterName: studentRoster[$0.studentNumber]?.name
+                )
+            }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         selectedEmailStudentNumbers.formIntersection(
             Set(emailCandidates.filter { $0.recipient != nil }.map(\.studentNumber))
@@ -690,6 +737,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         clearEmailPanelState()
     }
 
+    @objc private func resetEmailTemplate() {
+        emailTemplateView?.string = AttendanceEmailTemplate.defaultTemplate
+    }
+
     @objc private func submitEmailAttendance() {
         guard let startPicker = emailStartPicker, let endPicker = emailEndPicker else { return }
         let start = Calendar.current.startOfDay(for: startPicker.dateValue)
@@ -710,11 +761,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             showMessage(title: "No students selected", detail: "Select at least one student with a valid email address.")
             return
         }
+        let template = emailTemplateView?.string ?? savedEmailTemplate
+        guard !template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showMessage(title: "Message template is empty", detail: "Enter a message before preparing email drafts.")
+            return
+        }
         guard NSSharingService(named: .composeEmail) != nil else {
             showMessage(title: "Email drafts unavailable", detail: "No compatible email composition service is available on this Mac.")
             return
         }
-        let emailFont = attendanceEmailFont(warnWhenUnavailable: true)
+        let emailFont = attendanceEmailFont()
+        UserDefaults.standard.set(template, forKey: AttendanceEmailTemplate.defaultsKey)
 
         guard let panel = emailPanel else { return }
         window.endSheet(panel)
@@ -741,7 +798,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
                 reports: studentReports,
                 start: start,
                 end: end,
-                font: emailFont
+                font: emailFont,
+                template: template
             )
             guard let service = NSSharingService(named: .composeEmail) else {
                 showMessage(title: "Could not open all email drafts", detail: "The email composition service became unavailable while preparing drafts.")
@@ -758,39 +816,39 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         reports: [(AttendanceReport, AttendanceStudent)],
         start: Date,
         end: Date,
-        font: NSFont
+        font: NSFont,
+        template: String
     ) -> NSAttributedString {
-        let forename = student.name
-            .split(whereSeparator: \.isWhitespace)
-            .last
-            .map(String.init) ?? student.name
-        var lines = [
-            "Hello \(forename),",
-            "",
-            "Here is your attendance data for \(start.formatted(date: .long, time: .omitted)) to \(end.formatted(date: .long, time: .omitted)).",
-            ""
-        ]
+        let rosterName = AttendanceEmailTemplate.name(fromRosterValue: student.rosterName)
+        let forename = rosterName?.forename
+            ?? student.name.split(whereSeparator: \.isWhitespace).last.map(String.init)
+            ?? student.name
+        var detailLines: [String] = []
         for (report, attendance) in reports.sorted(by: { $0.0.periodStart < $1.0.periodStart }) {
-            lines.append("Report period: \(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted))")
-            lines.append("Attendance: \(format(attendance.totalAttendance)) of \(format(attendance.possibleAttendance)) (\(attendance.attendancePercentage.formatted(.percent.precision(.fractionLength(1)))))")
-            lines.append("Authorised absence: \(format(attendance.authorisedAbsence))")
-            lines.append("Unauthorised absence: \(format(attendance.unauthorisedAbsence))")
-            lines.append("")
+            detailLines.append("Report period: \(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted))")
+            detailLines.append("Attendance: \(format(attendance.totalAttendance)) of \(format(attendance.possibleAttendance)) (\(attendance.attendancePercentage.formatted(.percent.precision(.fractionLength(1)))))")
+            detailLines.append("Authorised absence: \(format(attendance.authorisedAbsence))")
+            detailLines.append("Unauthorised absence: \(format(attendance.unauthorisedAbsence))")
+            detailLines.append("")
         }
-        return NSAttributedString(string: lines.joined(separator: "\n"), attributes: [.font: font])
+        let body = AttendanceEmailTemplate.render(
+            template,
+            forename: forename,
+            fullName: rosterName?.fullName ?? student.name,
+            startDate: start.formatted(date: .long, time: .omitted),
+            endDate: end.formatted(date: .long, time: .omitted),
+            attendanceDetails: detailLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        return NSAttributedString(string: body, attributes: [.font: font])
     }
 
-    private func attendanceEmailFont(warnWhenUnavailable: Bool) -> NSFont {
-        if let aptos = NSFont(name: "Aptos", size: 12) {
-            return aptos
-        }
-        if warnWhenUnavailable {
-            showMessage(
-                title: "Aptos font unavailable",
-                detail: "Aptos isn't installed on this Mac. This email draft will use the system font at 12 pt."
-            )
-        }
-        return .systemFont(ofSize: 12)
+    private var savedEmailTemplate: String {
+        UserDefaults.standard.string(forKey: AttendanceEmailTemplate.defaultsKey)
+            ?? AttendanceEmailTemplate.defaultTemplate
+    }
+
+    private func attendanceEmailFont() -> NSFont {
+        NSFont(name: "Aptos", size: 12) ?? .systemFont(ofSize: 12)
     }
 
     private func clearEmailPanelState() {
@@ -798,6 +856,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         emailStartPicker = nil
         emailEndPicker = nil
         emailStudentTable = nil
+        emailTemplateView = nil
         emailSelectionButton = nil
         emailSubmitButton = nil
         emailStudentCountLabel = nil
