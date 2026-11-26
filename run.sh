@@ -13,6 +13,9 @@ swiftc -O \
     Sources/AttendanceTracker/AttendanceModels.swift \
     Sources/AttendanceTracker/CSVImporter.swift \
     Sources/AttendanceTracker/AttendanceEmailTemplate.swift \
+    Sources/AttendanceTracker/XLSXImporter.swift \
+    Sources/AttendanceTracker/OutlookAppleScript.swift \
+    Sources/AttendanceTracker/OutlookEmailSender.swift \
     Sources/AttendanceTracker/AttendanceStore.swift \
     Sources/AttendanceTracker/LocalNotifications.swift \
     Sources/AttendanceTracker/AttendanceTrackerApp.swift \

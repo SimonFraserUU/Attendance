@@ -17,7 +17,10 @@ struct CSVImporterTests {
         try parsesDemoAttendanceDataset()
         try rendersAttendanceEmailTemplatePlaceholders()
         try parsesRosterNameForEmailPersonalization()
-        print("All 14 tests passed.")
+        try removesSingleLetterNameWords()
+        try parsesForenamesFromWorkbookColumns()
+        try generatesSafeOutlookMailMergeScripts()
+        print("All 17 tests passed.")
     }
 
     private static func rendersAttendanceEmailTemplatePlaceholders() throws {
@@ -43,6 +46,69 @@ struct CSVImporterTests {
             AttendanceEmailTemplate.name(fromRosterValue: "Incomplete") == nil,
             "Expected names without a comma to use the report-name fallback."
         )
+    }
+
+    private static func removesSingleLetterNameWords() throws {
+        try expect(
+            AttendanceEmailTemplate.displayName("Smith, Mary J.") == "Smith, Mary",
+            "Expected one-letter initials to be removed from displayed roster names."
+        )
+        let name = AttendanceEmailTemplate.name(fromRosterValue: "Smith, Mary J.")
+        try expect(name?.forename == "Mary", "Expected one-letter initials to be removed from email forenames.")
+        try expect(
+            AttendanceEmailTemplate.displayName("J. Smith") == "Smith",
+            "Expected one-letter initials to be removed from names without a roster comma."
+        )
+    }
+
+    private static func parsesForenamesFromWorkbookColumns() throws {
+        let sharedStrings = """
+        <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <si><t>Student No</t></si>
+          <si><t>Surname</t></si>
+          <si><t>Forename</t></si>
+          <si><t>10001</t></si>
+          <si><t>Example</t></si>
+          <si><t>Alex</t></si>
+        </sst>
+        """
+        let worksheet = """
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+          <sheetData>
+            <row r="1">
+              <c r="A1" t="s"><v>0</v></c>
+              <c r="B1" t="s"><v>1</v></c>
+              <c r="C1" t="s"><v>2</v></c>
+            </row>
+            <row r="2">
+              <c r="A2" t="s"><v>3</v></c>
+              <c r="B2" t="s"><v>4</v></c>
+              <c r="C2" t="s"><v>5</v></c>
+            </row>
+          </sheetData>
+        </worksheet>
+        """
+        let names = try XLSXImporter.parseNames(
+            sharedStringsXML: Data(sharedStrings.utf8),
+            worksheetXML: Data(worksheet.utf8)
+        )
+        try expect(names["10001"]?.forename == "Alex", "Expected the workbook Forename field to be used.")
+        try expect(names["10001"]?.displayName == "Example, Alex", "Expected workbook names in surname-forename order.")
+        try expect(names["10001"]?.emailName == "Example, Alex", "Expected the email full name to use surname-forename order with a comma.")
+    }
+
+    private static func generatesSafeOutlookMailMergeScripts() throws {
+        let message = OutlookEmailMessage(
+            recipient: "alex@example.com",
+            subject: "Attendance \"update\"",
+            body: "Hello Alex,\nYour attendance is 90%."
+        )
+        let source = OutlookAppleScript.sendMessageSource(for: message)
+        try expect(source.contains("tell application id \"com.microsoft.Outlook\""), "Expected the Outlook bundle identifier.")
+        try expect(source.contains("make new to recipient"), "Expected an individual To recipient.")
+        try expect(source.contains("Attendance \\\"update\\\""), "Expected quotes to be escaped in the subject.")
+        try expect(source.contains("linefeed"), "Expected message newlines to be preserved.")
+        try expect(source.contains("send outgoingMessage"), "Expected the generated script to send the message.")
     }
 
     private static func parsesDemoAttendanceDataset() throws {

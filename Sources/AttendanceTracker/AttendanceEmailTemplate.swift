@@ -19,10 +19,21 @@ enum AttendanceEmailTemplate {
     static func name(fromRosterValue value: String?) -> AttendanceEmailName? {
         guard let value,
               let comma = value.firstIndex(of: ",") else { return nil }
-        let surname = value[..<comma].trimmingCharacters(in: .whitespacesAndNewlines)
-        let forename = value[value.index(after: comma)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        let surname = nameWords(in: String(value[..<comma]))
+        let forename = nameWords(in: String(value[value.index(after: comma)...]))
         guard !surname.isEmpty, !forename.isEmpty else { return nil }
         return AttendanceEmailName(forename: forename, fullName: "\(forename) \(surname)")
+    }
+
+    static func displayName(_ value: String) -> String {
+        guard let comma = value.firstIndex(of: ",") else {
+            return nameWords(in: value)
+        }
+        let surname = nameWords(in: String(value[..<comma]))
+        let forename = nameWords(in: String(value[value.index(after: comma)...]))
+        if surname.isEmpty { return forename }
+        if forename.isEmpty { return surname }
+        return "\(surname), \(forename)"
     }
 
     static func render(
@@ -39,5 +50,13 @@ enum AttendanceEmailTemplate {
             .replacingOccurrences(of: "{{start_date}}", with: startDate)
             .replacingOccurrences(of: "{{end_date}}", with: endDate)
             .replacingOccurrences(of: "{{attendance_details}}", with: attendanceDetails)
+    }
+
+    private static func nameWords(in value: String) -> String {
+        value.split(whereSeparator: \.isWhitespace)
+            .filter { word in
+                word.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count != 1
+            }
+            .joined(separator: " ")
     }
 }

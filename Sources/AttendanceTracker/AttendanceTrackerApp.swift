@@ -6,6 +6,14 @@ private struct StudentEmailCandidate {
     let name: String
     let email: String?
     var rosterName: String? = nil
+    var workbookName: StudentNameRecord? = nil
+
+    var displayName: String {
+        if let workbookName {
+            return workbookName.displayName
+        }
+        return AttendanceEmailTemplate.displayName(rosterName ?? name)
+    }
 
     var recipient: String? {
         guard let email else { return nil }
@@ -13,6 +21,15 @@ private struct StudentEmailCandidate {
         guard trimmed.contains("@"), !trimmed.contains(where: { $0.isWhitespace }) else { return nil }
         return trimmed
     }
+}
+
+private struct PreparedAttendanceEmail {
+    let recipient: String
+    let body: NSAttributedString
+}
+
+private final class EmailFormDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 @main
@@ -48,6 +65,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     private var reportTitleLabel: NSTextField!
     private var emptyState: NSTextField!
     private var studentRoster: [String: StudentRosterEntry] = [:]
+    private var studentNames: [String: StudentNameRecord] = [:]
     private var selectedReportID: UUID?
     private var emailPanel: NSPanel?
     private var emailStartPicker: NSDatePicker?
@@ -55,6 +73,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     private var emailStudentTable: NSTableView?
     private var emailTemplateView: NSTextView?
     private var emailSelectionButton: NSButton?
+    private var emailAutomaticSendButton: NSButton?
     private var emailSubmitButton: NSButton?
     private var emailStudentCountLabel: NSTextField?
     private var emailCandidates: [StudentEmailCandidate] = []
@@ -74,9 +93,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         do {
-            let rosterURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            let dataDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("AttendanceTracker", isDirectory: true)
-                .appendingPathComponent("StudentRoster.csv")
+            let rosterURL = dataDirectory.appendingPathComponent("StudentRoster.csv")
             guard FileManager.default.fileExists(atPath: rosterURL.path) else {
                 throw AttendanceImportError.missingStudentRoster
             }
@@ -84,6 +103,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             try store.applyStudentRoster(studentRoster)
         } catch {
             showMessage(title: "Could not load student roster", detail: error.localizedDescription)
+        }
+        do {
+            let dataDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("AttendanceTracker", isDirectory: true)
+            let namesURL = dataDirectory.appendingPathComponent("Names.xlsx")
+            studentNames = try XLSXImporter.parseNames(at: namesURL)
+        } catch {
+            showMessage(
+                title: "Could not load student forenames",
+                detail: "\(error.localizedDescription) Email drafts will fall back to names from the student roster."
+            )
         }
         refresh()
     }
@@ -336,7 +366,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             let candidate = emailCandidates[row]
             let emailStatus = candidate.recipient ?? "No valid email address"
             let checkbox = NSButton(
-                checkboxWithTitle: "\(candidate.name) (\(candidate.studentNumber)) — \(emailStatus)",
+                checkboxWithTitle: "\(candidate.displayName) (\(candidate.studentNumber)) — \(emailStatus)",
                 target: self,
                 action: #selector(emailStudentSelectionChanged(_:))
             )
@@ -370,7 +400,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let text: String
         switch identifier {
         case "number": text = student.studentNumber
-        case "name": text = student.name
+        case "name": text = displayName(for: student)
         case "year": text = student.year ?? ""
         case "possible": text = format(student.possibleAttendance)
         case "total": text = format(student.totalAttendance)
@@ -447,8 +477,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         selectedEmailStudentNumbers.removeAll()
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 800),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 700),
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -458,7 +488,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
 
         let title = NSTextField(labelWithString: "Prepare attendance emails")
         title.font = .systemFont(ofSize: 20, weight: .semibold)
-        let description = secondaryLabel("Choose a date range and select students. Each student gets a separate draft to protect their privacy.")
+        let description = secondaryLabel("Choose a date range and select students. Each student gets a separate email to protect their privacy.")
         description.font = .systemFont(ofSize: 12)
 
         let startPicker = emailDatePicker(date: earliestDate)
@@ -509,7 +539,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         studentsScroll.borderType = .bezelBorder
         studentsScroll.documentView = studentsTable
 
-        let templateTitle = NSTextField(labelWithString: "MESSAGE TEMPLATE")
+        let templateTitle = NSTextField(labelWithString: "MAIL MERGE")
         templateTitle.font = .systemFont(ofSize: 10, weight: .semibold)
         templateTitle.textColor = .secondaryLabelColor
         let resetTemplateButton = button(
@@ -522,7 +552,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         templateHeading.alignment = .centerY
 
         let templateHelp = secondaryLabel(
-            "Edit the shared message. Placeholders: {{forename}}, {{name}}, {{start_date}}, {{end_date}}, {{attendance_details}}."
+            "Personalize each email. Placeholders: {{forename}}, {{name}}, {{start_date}}, {{end_date}}, {{attendance_details}}."
         )
         templateHelp.font = .systemFont(ofSize: 11)
         templateHelp.lineBreakMode = .byWordWrapping
@@ -546,7 +576,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let submitButton = button("Submit", symbol: "envelope", action: #selector(submitEmailAttendance))
         submitButton.keyEquivalent = "\r"
         emailSubmitButton = submitButton
-        let actionRow = NSStackView(views: [spacer(), cancelButton, submitButton])
+        let automaticSendButton = NSButton(
+            checkboxWithTitle: "Send automatically with Microsoft Outlook",
+            target: self,
+            action: #selector(emailSendModeChanged(_:))
+        )
+        emailAutomaticSendButton = automaticSendButton
+        let actionRow = NSStackView(views: [automaticSendButton, spacer(), cancelButton, submitButton])
         actionRow.orientation = .horizontal
         actionRow.spacing = 8
 
@@ -559,20 +595,30 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         content.spacing = 12
         content.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
+        let documentWidth: CGFloat = 745
+        let container = EmailFormDocumentView(frame: NSRect(x: 0, y: 0, width: documentWidth, height: 1))
         container.addSubview(content)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 22),
             content.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -22),
             content.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
-            content.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -18),
             studentsScroll.widthAnchor.constraint(equalTo: content.widthAnchor),
-            studentsScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 190),
+            studentsScroll.heightAnchor.constraint(equalToConstant: 190),
             templateScroll.widthAnchor.constraint(equalTo: content.widthAnchor),
-            templateScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 150),
+            templateScroll.heightAnchor.constraint(equalToConstant: 150),
             actionRow.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
-        panel.contentView = container
+        container.layoutSubtreeIfNeeded()
+        let documentHeight = content.fittingSize.height + 38
+        container.setFrameSize(NSSize(width: documentWidth, height: documentHeight))
+
+        let formScrollView = NSScrollView()
+        formScrollView.hasVerticalScroller = true
+        formScrollView.hasHorizontalScroller = false
+        formScrollView.autohidesScrollers = true
+        formScrollView.borderType = .noBorder
+        formScrollView.documentView = container
+        panel.contentView = formScrollView
         emailPanel = panel
         refreshEmailStudentList()
         window.beginSheet(panel)
@@ -587,12 +633,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             studentNumber: student.studentNumber,
             name: student.name,
             email: student.email,
-            rosterName: studentRoster[student.studentNumber]?.name
+            rosterName: studentRoster[student.studentNumber]?.name,
+            workbookName: studentNames[student.studentNumber]
         )
         guard let recipient = candidate.recipient else {
             showMessage(
                 title: "No valid email address",
-                detail: "\(student.name) does not have a valid email address in the student roster."
+                detail: "\(displayName(for: student)) does not have a valid email address in the student roster."
             )
             return
         }
@@ -684,10 +731,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
                     studentNumber: $0.studentNumber,
                     name: $0.name,
                     email: $0.email,
-                    rosterName: studentRoster[$0.studentNumber]?.name
+                    rosterName: studentRoster[$0.studentNumber]?.name,
+                    workbookName: studentNames[$0.studentNumber]
                 )
             }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         selectedEmailStudentNumbers.formIntersection(
             Set(emailCandidates.filter { $0.recipient != nil }.map(\.studentNumber))
         )
@@ -743,6 +791,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         emailTemplateView?.string = AttendanceEmailTemplate.defaultTemplate
     }
 
+    @objc private func emailSendModeChanged(_ sender: NSButton) {
+        emailSubmitButton?.title = sender.state == .on ? "Send automatically" : "Submit"
+    }
+
     @objc private func submitEmailAttendance() {
         guard let startPicker = emailStartPicker, let endPicker = emailEndPicker else { return }
         let start = Calendar.current.startOfDay(for: startPicker.dateValue)
@@ -768,19 +820,21 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             showMessage(title: "Message template is empty", detail: "Enter a message before preparing email drafts.")
             return
         }
-        guard NSSharingService(named: .composeEmail) != nil else {
-            showMessage(title: "Email drafts unavailable", detail: "No compatible email composition service is available on this Mac.")
-            return
+        let sendAutomatically = emailAutomaticSendButton?.state == .on
+        if sendAutomatically {
+            guard OutlookEmailSender.isAvailable else {
+                showMessage(title: "Microsoft Outlook unavailable", detail: "Install Microsoft Outlook to send emails automatically. You can uncheck automatic sending to prepare drafts in your configured email app.")
+                return
+            }
+        } else {
+            guard NSSharingService(named: .composeEmail) != nil else {
+                showMessage(title: "Email drafts unavailable", detail: "No compatible email composition service is available on this Mac.")
+                return
+            }
         }
         let emailFont = attendanceEmailFont()
-        UserDefaults.standard.set(template, forKey: AttendanceEmailTemplate.defaultsKey)
-
-        guard let panel = emailPanel else { return }
-        window.endSheet(panel)
-        panel.orderOut(nil)
-        clearEmailPanelState()
-
         let subject = "Attendance data: \(start.formatted(date: .abbreviated, time: .omitted)) – \(end.formatted(date: .abbreviated, time: .omitted))"
+        var preparedEmails: [PreparedAttendanceEmail] = []
         for student in students {
             guard let recipient = student.recipient else { continue }
             let studentReports = reports.compactMap { report -> (AttendanceReport, AttendanceStudent)? in
@@ -794,7 +848,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
                 return (report, attendance)
             }
             guard !studentReports.isEmpty else { continue }
-
             let body = attendanceEmailBody(
                 for: student,
                 reports: studentReports,
@@ -803,13 +856,62 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
                 font: emailFont,
                 template: template
             )
+            preparedEmails.append(PreparedAttendanceEmail(recipient: recipient, body: body))
+        }
+        guard !preparedEmails.isEmpty else {
+            showMessage(title: "No attendance data", detail: "There are no attendance reports for the selected students in this date range.")
+            return
+        }
+        if sendAutomatically && !confirmAutomaticSend(recipientCount: preparedEmails.count) {
+            return
+        }
+
+        UserDefaults.standard.set(template, forKey: AttendanceEmailTemplate.defaultsKey)
+        guard let panel = emailPanel else { return }
+        window.endSheet(panel)
+        panel.orderOut(nil)
+        clearEmailPanelState()
+
+        if sendAutomatically {
+            let messages = preparedEmails.map {
+                OutlookEmailMessage(recipient: $0.recipient, subject: subject, body: $0.body.string)
+            }
+            sendAutomaticallyThroughOutlook(messages)
+            return
+        }
+
+        for preparedEmail in preparedEmails {
             guard let service = NSSharingService(named: .composeEmail) else {
                 showMessage(title: "Could not open all email drafts", detail: "The email composition service became unavailable while preparing drafts.")
                 return
             }
-            service.recipients = [recipient]
+            service.recipients = [preparedEmail.recipient]
             service.subject = subject
-            service.perform(withItems: [body])
+            service.perform(withItems: [preparedEmail.body])
+        }
+    }
+
+    private func confirmAutomaticSend(recipientCount: Int) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Send \(recipientCount) emails automatically?"
+        alert.informativeText = "Microsoft Outlook will send one separate email per student using its default account. These messages are sent immediately and cannot be recalled."
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Send \(recipientCount) Emails")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func sendAutomaticallyThroughOutlook(_ messages: [OutlookEmailMessage]) {
+        let count = messages.count
+        Task { [weak self] in
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try OutlookEmailSender.send(messages)
+                }.value
+                self?.showMessage(title: "Emails sent", detail: "Microsoft Outlook sent \(count) individual emails.")
+            } catch {
+                self?.showMessage(title: "Could not send all emails", detail: error.localizedDescription)
+            }
         }
     }
 
@@ -822,9 +924,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         template: String
     ) -> NSAttributedString {
         let rosterName = AttendanceEmailTemplate.name(fromRosterValue: student.rosterName)
-        let forename = rosterName?.forename
-            ?? student.name.split(whereSeparator: \.isWhitespace).last.map(String.init)
-            ?? student.name
+        let reportName = AttendanceEmailTemplate.displayName(student.name)
+        let workbookForename = student.workbookName.map {
+            AttendanceEmailTemplate.displayName($0.forename)
+        }.flatMap { $0.isEmpty ? nil : $0 }
+        let forename = workbookForename
+            ?? rosterName?.forename
+            ?? reportName.split(whereSeparator: \.isWhitespace).last.map(String.init)
+            ?? reportName
         var detailLines: [String] = []
         for (report, attendance) in reports.sorted(by: { $0.0.periodStart < $1.0.periodStart }) {
             detailLines.append("Report period: \(report.periodStart.formatted(date: .abbreviated, time: .omitted)) – \(report.periodEnd.formatted(date: .abbreviated, time: .omitted))")
@@ -836,7 +943,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let body = AttendanceEmailTemplate.render(
             template,
             forename: forename,
-            fullName: rosterName?.fullName ?? student.name,
+            fullName: student.workbookName?.emailName ?? rosterName?.fullName ?? reportName,
             startDate: start.formatted(date: .long, time: .omitted),
             endDate: end.formatted(date: .long, time: .omitted),
             attendanceDetails: detailLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -860,6 +967,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         emailStudentTable = nil
         emailTemplateView = nil
         emailSelectionButton = nil
+        emailAutomaticSendButton = nil
         emailSubmitButton = nil
         emailStudentCountLabel = nil
         emailCandidates = []
@@ -932,7 +1040,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             case "number":
                 comparison = lhs.studentNumber.localizedStandardCompare(rhs.studentNumber)
             case "name":
-                comparison = lhs.name.localizedStandardCompare(rhs.name)
+                comparison = displayName(for: lhs).localizedStandardCompare(displayName(for: rhs))
             case "year":
                 comparison = (lhs.year ?? "").localizedStandardCompare(rhs.year ?? "")
             case "possible":
@@ -962,6 +1070,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         if lhs < rhs { return .orderedAscending }
         if lhs > rhs { return .orderedDescending }
         return .orderedSame
+    }
+
+    private func displayName(for student: AttendanceStudent) -> String {
+        if let workbookName = studentNames[student.studentNumber] {
+            return workbookName.displayName
+        }
+        return AttendanceEmailTemplate.displayName(
+            studentRoster[student.studentNumber]?.name ?? student.name
+        )
     }
 
     private func button(_ title: String, symbol: String, action: Selector) -> NSButton {
