@@ -27,7 +27,12 @@ enum AttendanceEmailTemplate {
 
     static func displayName(_ value: String) -> String {
         guard let comma = value.firstIndex(of: ",") else {
-            return nameWords(in: value)
+            let words = nameWords(in: value)
+            let parts = words.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count > 1 else { return words }
+            let surname = String(parts.last!)
+            let forename = parts.dropLast().map(String.init).joined(separator: " ")
+            return "\(surname), \(forename)"
         }
         let surname = nameWords(in: String(value[..<comma]))
         let forename = nameWords(in: String(value[value.index(after: comma)...]))

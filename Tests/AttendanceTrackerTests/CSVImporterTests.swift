@@ -53,6 +53,10 @@ struct CSVImporterTests {
             AttendanceEmailTemplate.displayName("Smith, Mary J.") == "Smith, Mary",
             "Expected one-letter initials to be removed from displayed roster names."
         )
+        try expect(
+            AttendanceEmailTemplate.displayName("Alex Example") == "Example, Alex",
+            "Expected forename-surname names to be displayed as surname, forename."
+        )
         let name = AttendanceEmailTemplate.name(fromRosterValue: "Smith, Mary J.")
         try expect(name?.forename == "Mary", "Expected one-letter initials to be removed from email forenames.")
         try expect(
@@ -116,7 +120,10 @@ struct CSVImporterTests {
         let report = try CSVImporter.parseReport(data: data)
         try expect(report.students.count == 20, "Expected the demo dataset to contain 20 students.")
         try expect(report.students.allSatisfy { $0.studentNumber.hasPrefix("DEMO") }, "Expected demo student IDs.")
-        try expect(report.students.allSatisfy { $0.email == nil }, "Expected the demo dataset to contain no email addresses.")
+        try expect(
+            report.students.allSatisfy { $0.email?.isEmpty ?? true },
+            "Expected the demo dataset to contain no email addresses."
+        )
         try expect(
             report.students.filter { $0.attendancePercentage < 0.8 }.count == 8,
             "Expected the demo dataset to include a range of low-attendance students."

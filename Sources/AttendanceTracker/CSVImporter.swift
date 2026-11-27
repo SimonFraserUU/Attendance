@@ -203,7 +203,7 @@ enum CSVImporter {
         for student in report.students {
             let values = [
                 student.studentNumber,
-                student.name,
+                AttendanceEmailTemplate.displayName(student.name),
                 student.year ?? "",
                 student.email ?? "",
                 formatNumber(student.possibleAttendance),

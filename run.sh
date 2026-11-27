@@ -24,4 +24,10 @@ swiftc -O \
 
 cp Resources/Info.plist "$app/Contents/Info.plist"
 cp Resources/AttendanceTracker.icns "$app/Contents/Resources/AttendanceTracker.icns"
-open "$app"
+
+installed="$HOME/Applications/AttendanceTracker.app"
+mkdir -p "$HOME/Applications"
+ditto "$app" "$installed"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$installed"
+mdimport "$installed" >/dev/null 2>&1 || true
+open "$installed"

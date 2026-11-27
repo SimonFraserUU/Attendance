@@ -28,7 +28,7 @@ These columns are optional:
 - `% Attended` (optional; displayed attendance is calculated from Total ÷ Possible)
 - `Year` and `Email` (optional; otherwise matched from the bundled roster)
 
-For screenshots and demonstrations, import [Examples/DemoAttendance.csv](Examples/DemoAttendance.csv). It contains fictional students with `DEMO` IDs and no email addresses.
+For testing, you can manually import the [demo CSV](Examples/DemoAttendance.csv). It contains fictional students with `DEMO` IDs and no email addresses.
 
 Each import is saved as a separate report. Students whose roster lists only COM668 are excluded from report views, summaries, and exports. Use **Export Low-Attendance CSV** to export the remaining students below the selected threshold. The export includes the report date range. If no students meet both criteria, the app displays a message instead of creating an empty file. Imported reports are stored under `~/Library/Application Support/AttendanceTracker/`.
 
