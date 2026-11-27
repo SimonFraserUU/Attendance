@@ -58,6 +58,23 @@ struct AttendanceReport: Identifiable, Codable, Equatable {
         students.filter { $0.attendancePercentage < threshold }
     }
 
+    static func forEmail(
+        _ reports: [AttendanceReport],
+        start: Date,
+        end: Date,
+        selectedReportID: UUID?
+    ) -> [AttendanceReport] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: start)
+        let end = calendar.startOfDay(for: end)
+        guard start <= end else { return [] }
+        return reports.filter {
+            (selectedReportID == nil || $0.id == selectedReportID)
+                && calendar.startOfDay(for: $0.periodStart) >= start
+                && calendar.startOfDay(for: $0.periodEnd) <= end
+        }
+    }
+
     func excludingStudentsTakingOnly(module: String, accordingTo roster: [String: StudentRosterEntry]) -> AttendanceReport {
         let includedStudents = students.filter {
             roster[$0.studentNumber]?.isOnlyTaking(module: module) != true

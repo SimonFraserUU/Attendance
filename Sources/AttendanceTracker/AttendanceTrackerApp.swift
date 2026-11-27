@@ -67,9 +67,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     private var studentRoster: [String: StudentRosterEntry] = [:]
     private var studentNames: [String: StudentNameRecord] = [:]
     private var selectedReportID: UUID?
+    private var refreshingHistorySelection = false
     private var emailPanel: NSPanel?
+    private var emailSelectedReportID: UUID?
     private var emailStartPicker: NSDatePicker?
     private var emailEndPicker: NSDatePicker?
+    private var emailAllReportsButton: NSButton?
     private var emailStudentTable: NSTableView?
     private var emailTemplateView: NSTextView?
     private var emailSelectionButton: NSButton?
@@ -310,10 +313,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     private func refresh() {
+        refreshingHistorySelection = true
         historyTable.reloadData()
         if let index = store.reports.firstIndex(where: { $0.id == selectedReport?.id }) {
             historyTable.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         }
+        refreshingHistorySelection = false
         thresholdLabel.stringValue = "LOW ATTENDANCE THRESHOLD      \(Int(currentThreshold * 100))%"
         guard let report = selectedReport else {
             reportTitleLabel.stringValue = "Import a CSV report"
@@ -352,7 +357,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard let table = notification.object as? NSTableView, table == historyTable else { return }
+        guard !refreshingHistorySelection,
+              let table = notification.object as? NSTableView, table == historyTable else { return }
         let row = table.selectedRow
         guard store.reports.indices.contains(row) else { return }
         guard selectedReportID != store.reports[row].id else { return }
@@ -466,14 +472,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     @objc private func openEmailAttendance() {
-        guard !store.reports.isEmpty else {
+        guard let report = selectedReport else {
             showMessage(title: "No attendance reports", detail: "Import at least one attendance report before preparing student emails.")
             return
         }
 
-        let reports = store.reports
-        let earliestDate = reports.map(\.periodStart).min() ?? Date()
-        let latestDate = reports.map(\.periodEnd).max() ?? earliestDate
+        emailSelectedReportID = report.id
         selectedEmailStudentNumbers.removeAll()
 
         let panel = NSPanel(
@@ -491,8 +495,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         let description = secondaryLabel("Choose a date range and select students. Each student gets a separate email to protect their privacy.")
         description.font = .systemFont(ofSize: 12)
 
-        let startPicker = emailDatePicker(date: earliestDate)
-        let endPicker = emailDatePicker(date: latestDate)
+        let startPicker = emailDatePicker(date: report.periodStart)
+        let endPicker = emailDatePicker(date: report.periodEnd)
         startPicker.target = self
         startPicker.action = #selector(emailDateRangeChanged)
         endPicker.target = self
@@ -508,7 +512,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         dateRange.alignment = .centerY
         dateRange.spacing = 18
 
-        let rangeHelp = secondaryLabel("Only reports whose full period falls within these dates are included.")
+        let allReportsButton = NSButton(
+            checkboxWithTitle: "Include all reports within the date range",
+            target: self,
+            action: #selector(emailDateRangeChanged)
+        )
+        emailAllReportsButton = allReportsButton
+        let rangeHelp = secondaryLabel("By default, only the selected report is included. Reports must fall fully within these dates.")
         rangeHelp.font = .systemFont(ofSize: 11)
 
         let countLabel = NSTextField(labelWithString: "")
@@ -587,7 +597,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         actionRow.spacing = 8
 
         let content = NSStackView(views: [
-            title, description, dateRange, rangeHelp, countLabel, selectAllButton, studentsScroll,
+            title, description, dateRange, allReportsButton, rangeHelp, countLabel, selectAllButton, studentsScroll,
             templateHeading, templateHelp, templateScroll, actionRow
         ])
         content.orientation = .vertical
@@ -684,21 +694,23 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         refreshEmailStudentList()
     }
 
+    private func emailReports(start: Date, end: Date) -> [AttendanceReport] {
+        guard let selectedReportID = emailSelectedReportID else { return [] }
+        return AttendanceReport.forEmail(
+            store.reports,
+            start: start,
+            end: end,
+            selectedReportID: emailAllReportsButton?.state == .on ? nil : selectedReportID
+        )
+    }
+
     private func refreshEmailStudentList() {
         guard let startPicker = emailStartPicker,
               let endPicker = emailEndPicker else { return }
 
         let start = Calendar.current.startOfDay(for: startPicker.dateValue)
         let end = Calendar.current.startOfDay(for: endPicker.dateValue)
-        let reports: [AttendanceReport]
-        if start <= end {
-            reports = store.reports.filter {
-                Calendar.current.startOfDay(for: $0.periodStart) >= start
-                    && Calendar.current.startOfDay(for: $0.periodEnd) <= end
-            }
-        } else {
-            reports = []
-        }
+        let reports = emailReports(start: start, end: end)
 
         var studentsByNumber: [String: AttendanceStudent] = [:]
         for report in reports {
@@ -804,10 +816,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             return
         }
 
-        let reports = store.reports.filter {
-            Calendar.current.startOfDay(for: $0.periodStart) >= start
-                && Calendar.current.startOfDay(for: $0.periodEnd) <= end
-        }
+        let reports = emailReports(start: start, end: end)
         let students = emailCandidates.filter {
             selectedEmailStudentNumbers.contains($0.studentNumber) && $0.recipient != nil
         }
@@ -962,8 +971,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
 
     private func clearEmailPanelState() {
         emailPanel = nil
+        emailSelectedReportID = nil
         emailStartPicker = nil
         emailEndPicker = nil
+        emailAllReportsButton = nil
         emailStudentTable = nil
         emailTemplateView = nil
         emailSelectionButton = nil

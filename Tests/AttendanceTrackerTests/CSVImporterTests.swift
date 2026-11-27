@@ -16,11 +16,44 @@ struct CSVImporterTests {
         try exportsAReportThatCanBeImportedAgain()
         try parsesDemoAttendanceDataset()
         try rendersAttendanceEmailTemplatePlaceholders()
+        try selectsReportsForAttendanceEmail()
         try parsesRosterNameForEmailPersonalization()
         try removesSingleLetterNameWords()
         try parsesForenamesFromWorkbookColumns()
         try generatesSafeOutlookMailMergeScripts()
-        print("All 17 tests passed.")
+        print("All 18 tests passed.")
+    }
+
+    private static func selectsReportsForAttendanceEmail() throws {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_759_276_800))
+        let end = calendar.date(byAdding: .day, value: 6, to: start)!
+        let laterEnd = calendar.date(byAdding: .day, value: 13, to: start)!
+        let first = AttendanceReport(id: UUID(), importedAt: start, periodStart: start, periodEnd: end, students: [])
+        let second = AttendanceReport(id: UUID(), importedAt: end, periodStart: start, periodEnd: end, students: [])
+        let later = AttendanceReport(id: UUID(), importedAt: laterEnd, periodStart: end, periodEnd: laterEnd, students: [])
+        let reports = [second, first, later]
+
+        try expect(
+            AttendanceReport.forEmail(reports, start: start, end: end, selectedReportID: second.id) == [second],
+            "Expected the selected report only, even when another report has the same dates."
+        )
+        try expect(
+            AttendanceReport.forEmail(reports, start: start, end: end, selectedReportID: nil) == [second, first],
+            "Expected all fully enclosed reports when including the date range."
+        )
+        try expect(
+            AttendanceReport.forEmail(reports, start: start, end: laterEnd, selectedReportID: nil) == reports,
+            "Expected an expanded range to include later reports."
+        )
+        try expect(
+            AttendanceReport.forEmail(reports, start: end, end: laterEnd, selectedReportID: second.id).isEmpty,
+            "Expected the selected report to be excluded when its full period is outside the range."
+        )
+        try expect(
+            AttendanceReport.forEmail(reports, start: end, end: start, selectedReportID: nil).isEmpty,
+            "Expected an invalid date range to include no reports."
+        )
     }
 
     private static func rendersAttendanceEmailTemplatePlaceholders() throws {
